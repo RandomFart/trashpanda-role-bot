@@ -1,0 +1,7 @@
+.env
+config.py
+rotation_state.json
+.venv/
+venv/
+__pycache__/
+*.pyc
