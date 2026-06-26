@@ -23,6 +23,17 @@ client = discord.Client(intents=intents)
 async def on_ready():
     now = discord.utils.utcnow()
 
+    print(f"Logged in as {client.user}")
+
+    guild = client.get_guild(config.GUILD_ID)
+
+    if guild is None:
+        print("Could not find guild. Check GUILD_ID and make sure the bot is in the server.")
+        await client.close()
+        return
+
+    print(f"Connected to server: {guild.name}")
+    
     # Build quick lookup tables once.
     # This avoids repeatedly searching through guild.roles like a caveman.
     role_by_id = {
@@ -88,7 +99,12 @@ async def on_ready():
         #
         # role_ids_to_keep = ???
 
-        role_ids_to_keep = set()  # replace this
+        if desired_rank is None:
+            desired_role = role_by_id[config.PRIVATE_ROLE_ID]
+        else:
+            desired_role = role_by_id[desired_rank.role_id]
+
+        role_ids_to_keep = {desired_role.id}
 
         # TODO:
         # Build a list of actual Discord role objects to remove.
@@ -98,7 +114,11 @@ async def on_ready():
         #
         # roles_to_remove = [...]
 
-        roles_to_remove = []  # replace this
+        roles_to_remove = [
+            role
+            for role in current_managed_roles
+            if role.id not in role_ids_to_keep
+        ]
 
         # TODO:
         # Build a list of actual Discord role objects to add.
@@ -114,8 +134,11 @@ async def on_ready():
         # For now, I recommend A for consistency.
         #
         # roles_to_add = [...]
-
-        roles_to_add = []  # replace this
+        if desired_role.id in current_managed_role_ids:
+            roles_to_add = []
+        else:
+            roles_to_add = [desired_role]
+        
 
         rank_name = desired_rank.name if desired_rank else "Private / no promotion yet"
 
