@@ -4,7 +4,7 @@ import config
 from dotenv import load_dotenv
 from rank_logic import get_days_since_joined, get_qualified_rank
 
-DRY_RUN = True
+DRY_RUN = False
 
 load_dotenv()
 
@@ -33,7 +33,7 @@ async def on_ready():
         return
 
     print(f"Connected to server: {guild.name}")
-    
+
     # Build quick lookup tables once.
     # This avoids repeatedly searching through guild.roles like a caveman.
     role_by_id = {
@@ -48,9 +48,19 @@ async def on_ready():
 
     managed_role_ids = rank_role_ids | {config.PRIVATE_ROLE_ID}
 
+    promotions_channel = guild.get_channel(config.PROMOTIONS_CHANNEL_ID)
+
+    if promotions_channel is None:
+        print("Warning: promotions channel not found. Check PROMOTIONS_CHANNEL_ID.")
+
     print()
     print("Member rank preview:")
     print("--------------------")
+    
+    if not DRY_RUN:
+        print("LIVE MODE ENABLED: applying role changes")
+    else:
+        print("DRY RUN: no role changes applied")
 
     member_count = 0
     skipped_bots = 0
@@ -71,14 +81,6 @@ async def on_ready():
         days = get_days_since_joined(member, now)
         desired_rank = get_qualified_rank(days, config.RANKS)
 
-        # TODO:
-        # If desired_rank is None:
-        #     member should keep Private, but should not have higher timed ranks.
-        #
-        # If desired_rank is not None:
-        #     member should have exactly that timed rank,
-        #     and should lose Private plus any other timed rank.
-
         current_managed_roles = [
             role
             for role in member.roles
@@ -90,15 +92,6 @@ async def on_ready():
             for role in current_managed_roles
         }
 
-        # TODO:
-        # Decide which role IDs this member should keep.
-        #
-        # Hint:
-        # - If desired_rank exists, keep only desired_rank.role_id.
-        # - If desired_rank is None, keep only config.PRIVATE_ROLE_ID.
-        #
-        # role_ids_to_keep = ???
-
         if desired_rank is None:
             desired_role = role_by_id[config.PRIVATE_ROLE_ID]
         else:
@@ -106,34 +99,12 @@ async def on_ready():
 
         role_ids_to_keep = {desired_role.id}
 
-        # TODO:
-        # Build a list of actual Discord role objects to remove.
-        #
-        # Hint:
-        # Remove managed roles that are NOT in role_ids_to_keep.
-        #
-        # roles_to_remove = [...]
-
         roles_to_remove = [
             role
             for role in current_managed_roles
             if role.id not in role_ids_to_keep
         ]
 
-        # TODO:
-        # Build a list of actual Discord role objects to add.
-        #
-        # Hint:
-        # If desired_rank exists and the member does not already have it,
-        # add that rank role.
-        #
-        # If desired_rank is None, you can either:
-        #   A) add Private if missing
-        #   B) do nothing and trust Carl-bot
-        #
-        # For now, I recommend A for consistency.
-        #
-        # roles_to_add = [...]
         if desired_role.id in current_managed_role_ids:
             roles_to_add = []
         else:
@@ -158,9 +129,24 @@ async def on_ready():
                     print(f"    + {role.name}")
 
             if not DRY_RUN:
-                # Do not touch this until dry-run output looks sane.
-                await member.remove_roles(*roles_to_remove, reason="Timed rank update")
-                await member.add_roles(*roles_to_add, reason="Timed rank update")
+                if roles_to_remove:
+                    await member.remove_roles(*roles_to_remove, reason="Timed rank update")
+                
+                if roles_to_add:
+                    await member.add_roles(*roles_to_add, reason="Timed rank update")
+                
+                 # Only congratulate actual rank promotions, not "you stayed Private" cleanup.
+                if (
+                    config.ANNOUNCE_PROMOTIONS
+                    and promotions_channel is not None
+                    and desired_rank is not None
+                    and desired_role in roles_to_add
+                ):
+        
+                    await promotions_channel.send(
+                        f"🎖️ Attention, citizens. {member.mention} has been promoted to "
+                        f"**{desired_rank.name}**. Super Earth acknowledges this acceptable display of loyalty."
+        )
 
     print()
     print(f"Fetched members: {member_count}")
